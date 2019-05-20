@@ -1,0 +1,490 @@
+package nirhart.dripmysteps
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Point
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.graphics.drawable.Drawable
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.preference.PreferenceManager
+import android.service.wallpaper.WallpaperService
+import android.util.TypedValue
+import android.view.Display
+import android.view.Surface
+import android.view.SurfaceHolder
+import android.view.WindowManager
+
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.api.GoogleApiClient
+
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+
+class DripWallpaperService : WallpaperService(), SharedPreferences.OnSharedPreferenceChangeListener {
+    private val ex: ExecutorService
+    private var stepsGoal: Int = 0
+    private var low: Float = 0.toFloat()
+    private var tide: Float = 0.toFloat()
+    private var lastStepsCheck: Long = 0
+    private var display: Display? = null
+
+    init {
+        // Single thread pool with 1 min time of idle thread
+        this.ex = ThreadPoolExecutor(1, 1, 1, TimeUnit.MINUTES, LinkedBlockingQueue())
+    }
+
+    override fun onCreateEngine(): WallpaperService.Engine {
+
+        this.display = (applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay
+        val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+        prefs.registerOnSharedPreferenceChangeListener(this)
+
+        // Tide and low will effect the y offset animation of the wave
+        tide = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, java.lang.Float.parseFloat(prefs.getString(TIDE_LEVEL, TIDE_LEVEL_DEFAULT)), resources.displayMetrics)
+        low = -TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, java.lang.Float.parseFloat(prefs.getString(LOW_LEVEL, LOW_LEVEL_DEFAULT)), resources.displayMetrics)
+
+        stepsGoal = Integer.parseInt(prefs.getString(STEPS_GOAL, STEPS_GOAL_DEFAULT))
+
+        return DripWallpaperEngine()
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {
+        when (key) {
+            STEPS_GOAL -> {
+                stepsGoal = Integer.parseInt(sharedPreferences.getString(key, STEPS_GOAL_DEFAULT))
+                lastStepsCheck = 0
+            }
+            TIDE_LEVEL -> tide = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, java.lang.Float.parseFloat(sharedPreferences.getString(key, TIDE_LEVEL_DEFAULT)), resources.displayMetrics)
+            LOW_LEVEL_DEFAULT -> low = -TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, java.lang.Float.parseFloat(sharedPreferences.getString(key, LOW_LEVEL_DEFAULT)), resources.displayMetrics)
+        }
+    }
+
+    override fun onDestroy() {
+        PreferenceManager.getDefaultSharedPreferences(applicationContext).unregisterOnSharedPreferenceChangeListener(this)
+        ex.shutdown()
+        super.onDestroy()
+    }
+
+    /**
+     * @return screen rotation in degrees
+     */
+    fun getRotation(orientation: Int): Int {
+        when (orientation) {
+            Surface.ROTATION_0 -> return 0
+            Surface.ROTATION_90 -> return 90
+            Surface.ROTATION_180 -> return 180
+            Surface.ROTATION_270 -> return 270
+
+            else -> return 0
+        }
+    }
+
+    inner class DripWallpaperEngine : WallpaperService.Engine(), SensorHelper.OnAngleChangedListener, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, StepsHelper.OnStepsCountFetchedListener {
+
+        private val drawRunner: Runnable
+        private val backgroundRunner: Runnable
+        private val handler: Handler
+        private val shaderMatrix: Matrix
+        private val maskXStep: Float
+        private var zeroLevel: Float = 0.toFloat()
+        private var topLevel: Float = 0.toFloat()
+        private var offsetY: Float = 0.toFloat()
+        private var rotation: Int = 0
+        private var lastOrientation = -1
+        private var locationOfDrip: Point? = null
+        private var phoneAngle = 0.0
+        private var visible: Boolean = false
+        private var wave: Drawable? = null
+        private var width: Int = 0
+        private var height: Int = 0
+        private var shader: BitmapShader? = null
+        private var paint: Paint? = null
+        private var maskX: Float = 0.toFloat()
+        private var maskY: Float = 0.toFloat()
+        private var maskYStep: Float = 0.toFloat()
+        private var waterRotation: Float = 0.toFloat()
+        private var backgroundBitmap: Bitmap? = null
+        private var textRect: Rect? = null
+        private var redrawEverything: Boolean = false
+        private var sensorHelper: SensorHelper? = null
+        private var authHelper: AuthHelper? = null
+        private var stepsHelper: StepsHelper? = null
+        private var finalAngle = 0.0
+
+        init {
+            initPaint()
+
+            handler = Handler(Looper.getMainLooper())
+            maskXStep = resources.getDimension(R.dimen.mask_x_step)
+            maskYStep = resources.getDimension(R.dimen.mask_y_step)
+            redrawEverything = true
+            shaderMatrix = Matrix()
+
+            createShader()
+            this.drawRunner = Runnable { draw() }
+
+            // Stuff to do every frame in a background thread
+            this.backgroundRunner = Runnable {
+                checkSteps()
+                // Follow screen rotation outside the UI Thread
+                followScreenRotation()
+                // Set the sea shader according to its x/y/rotation values
+                shaderMatrix.setTranslate(maskX, maskY + offsetY)
+                shaderMatrix.postRotate(waterRotation, (width / 2).toFloat(), (height / 2).toFloat())
+                shader!!.setLocalMatrix(shaderMatrix)
+
+                // Move the wave horizontally
+                maskX += maskXStep
+                if (maskX > wave!!.intrinsicWidth)
+                    maskX -= wave!!.intrinsicWidth.toFloat()
+
+                // Move the wave vertically
+                maskY += maskYStep
+                if (maskY > tide) {
+                    maskYStep *= -1f
+                }
+
+                if (maskY < low) {
+                    maskYStep *= -1f
+                }
+            }
+
+            startListeners()
+        }
+
+        fun setOffsetY(offsetY: Float) {
+            this.offsetY = offsetY - 100 // 100 is the transparent y part of wave.png
+        }
+
+        /**
+         * Check if the orientation is changed
+         * this will fetch mirror orientation as well as 90 degrees orientation change
+         */
+        fun refreshOrientation() {
+            if (lastOrientation != display!!.rotation) {
+                // Enforce new steps check in order to calculate the new yOffset of sea level
+                lastStepsCheck = 0
+                lastOrientation = display!!.rotation
+                rotation = getRotation(lastOrientation)
+            }
+        }
+
+        fun onConnected(bundle: Bundle) {}
+
+        fun onConnectionSuspended(i: Int) {}
+
+        fun onConnectionFailed(connectionResult: ConnectionResult) {}
+
+        fun onStepsCountFetched(count: Int) {
+            var percent = count.toFloat() / stepsGoal.toFloat()
+
+            if (percent > 1)
+                percent = 1f
+
+            // Allow a minimum fill of 5% so the drip will not be empty
+            if (percent < 0.05)
+                percent = 0.05f
+
+            // Change the sea level according to the new steps
+            setOffsetY((zeroLevel + percent * (topLevel - zeroLevel)).toInt().toFloat())
+        }
+
+        private fun initPaint() {
+            this.paint = Paint()
+            this.paint!!.textAlign = Paint.Align.CENTER
+            this.paint!!.textSize = resources.getDimension(R.dimen.drip_size)
+            this.paint!!.typeface = Typeface.createFromAsset(assets, "dripfont.ttf")
+        }
+
+        override fun onVisibilityChanged(visible: Boolean) {
+            this.visible = visible
+
+            if (visible) {
+                startListeners()
+                redrawEverything = true
+                lastStepsCheck = 0
+                doFrame()
+            } else {
+                stopListeners()
+            }
+        }
+
+        override fun onSurfaceDestroyed(holder: SurfaceHolder) {
+            super.onSurfaceDestroyed(holder)
+
+            this.visible = false
+            stopListeners()
+        }
+
+        override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+            super.onSurfaceChanged(holder, format, width, height)
+
+            this.width = width
+            this.height = height
+            // Enforce new steps check in order to calculate the new yOffset of sea level
+            lastStepsCheck = 0
+            refreshOrientation()
+            redrawEverything = true
+            doFrame()
+        }
+
+        private fun draw() {
+            val holder = surfaceHolder
+            var canvas: Canvas? = null
+            try {
+                // redrawEverything means that the whole screen is dirty, reset all params and redraw everything
+                if (redrawEverything) {
+                    initDimensParam(width, height)
+                    canvas = holder.lockCanvas()
+                } else {
+                    canvas = holder.lockCanvas(textRect)
+                }
+                if (canvas != null) {
+                    draw(canvas)
+                }
+            } finally {
+                if (canvas != null) {
+                    try {
+                        holder.unlockCanvasAndPost(canvas)
+                    } catch (ignore: Exception) {
+                    }
+
+                }
+            }
+
+            if (visible) {
+                doFrame()
+            }
+        }
+
+        private fun doFrame() {
+            handler.post(drawRunner)
+            ex.execute(backgroundRunner)
+        }
+
+        /**
+         * Call for FitnessAPI if needed
+         */
+        private fun checkSteps() {
+            if (SystemClock.uptimeMillis() - lastStepsCheck > STEPS_CHECK_INTERVAL) {
+                lastStepsCheck = SystemClock.uptimeMillis()
+                stepsHelper!!.fetchStepsCount()
+            }
+        }
+
+        private fun draw(canvas: Canvas) {
+            try {
+                canvas.drawBitmap(backgroundBitmap!!, 0f, 0f, paint)
+                redrawEverything = false
+            } catch (ignore: Exception) {
+                redrawEverything = true
+                canvas.drawColor(CompatUtils.getColor(applicationContext, R.color.background_color))
+            }
+
+            // Draw the drip with the water shader
+            canvas.drawText("\uE900", locationOfDrip!!.x.toFloat(), locationOfDrip!!.y.toFloat(), paint!!)
+        }
+
+        private fun initDimensParam(width: Int, height: Int) {
+            val halfWidth = width / 2
+            val halfHeight = height / 2
+
+            if (locationOfDrip == null)
+                locationOfDrip = Point()
+
+            // The location in screen to draw the text
+            locationOfDrip!!.x = halfWidth
+            locationOfDrip!!.y = (halfHeight - (paint!!.descent() + paint!!.ascent()) / 2).toInt()
+
+            if (textRect == null) {
+                textRect = Rect()
+            }
+
+            // Get text bounds to limit the sea level from bottom to top
+            paint!!.getTextBounds("\uE900", 0, 1, textRect)
+            textRect!!.offsetTo(halfWidth - textRect!!.width() / 2, halfHeight - textRect!!.height() / 2)
+
+            zeroLevel = textRect!!.bottom.toFloat()
+            topLevel = textRect!!.top.toFloat()
+
+            if (offsetY == 0f) {
+                setOffsetY(zeroLevel)
+            }
+
+            // Redraw the bitmap if needed
+            if (backgroundBitmap != null && !backgroundBitmap!!.isRecycled && (backgroundBitmap!!.width != width || backgroundBitmap!!.height != height)) {
+                backgroundBitmap!!.recycle()
+            }
+
+            buildBitmap(width, height)
+        }
+
+        /**
+         * Build the background bitmap to fit canvas width
+         *
+         * @param width  - width of the new bitmap
+         * @param height - height of the new bitmap
+         */
+        private fun buildBitmap(width: Int, height: Int) {
+            val tmpBackgroundBitmap = BitmapFactory.decodeResource(resources, R.drawable.bg)
+            backgroundBitmap = scaleCenterCrop(tmpBackgroundBitmap, width, height)
+            tmpBackgroundBitmap.recycle()
+        }
+
+        /**
+         * Scale and center crop a bitmap to fit new dimensions
+         *
+         * @param source     - source bitmap to scale and center crop
+         * @param destWidth  - destination width
+         * @param destHeight - destination height
+         * @return - the new scaled and centered bitmap
+         */
+        fun scaleCenterCrop(source: Bitmap, destWidth: Int, destHeight: Int): Bitmap {
+            val sourceWidth = source.width
+            val sourceHeight = source.height
+
+            val xScale = destWidth.toFloat() / sourceWidth
+            val yScale = destHeight.toFloat() / sourceHeight
+            val scale = Math.max(xScale, yScale)
+
+            val scaledWidth = scale * sourceWidth
+            val scaledHeight = scale * sourceHeight
+
+            val left = (destWidth - scaledWidth) / 2
+            val top = (destHeight - scaledHeight) / 2
+
+            val destRect = RectF(left, top, left + scaledWidth, top + scaledHeight)
+
+            val dest = Bitmap.createBitmap(destWidth, destHeight, source.config)
+            val canvas = Canvas(dest)
+            canvas.drawBitmap(source, null, destRect, null)
+
+            return dest
+        }
+
+        /**
+         * Create the wave shader
+         */
+        private fun createShader() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                wave = applicationContext.getDrawable(R.drawable.wave)
+            } else {
+
+                wave = resources.getDrawable(R.drawable.wave)
+            }
+
+            assert(wave != null)
+
+            val waveW = wave!!.intrinsicWidth
+            val waveH = wave!!.intrinsicHeight
+
+            val b = Bitmap.createBitmap(waveW, waveH, Bitmap.Config.RGB_565)
+            val c = Canvas(b)
+
+            c.drawColor(CompatUtils.getColor(applicationContext, R.color.drip_color))
+
+            wave!!.setBounds(0, 0, waveW, waveH)
+            wave!!.draw(c)
+
+            // The wave is repeated in x axis and transparent in top y axis
+            shader = BitmapShader(b, Shader.TileMode.REPEAT, Shader.TileMode.CLAMP)
+            paint!!.shader = shader
+        }
+
+        fun onAngleChangedListener(angle: Double) {
+            finalAngle = angle
+        }
+
+        private fun followScreenRotation() {
+            val angle = finalAngle
+            val d = Math.abs(angle - phoneAngle).toInt() % 360
+            val r = if (d > 180) 360 - d else d
+
+            // Change the angle only when there is a certain threshold from the previous angle
+            // this is in order to avoid vibration in the drip
+            if (r > 2) {
+                var mAngle = phoneAngle
+                var plus = angle - mAngle
+                var minus = 360 - angle + mAngle
+
+                // Calculate the new angle
+                if (mAngle > angle) {
+                    plus = 360 + plus
+                    minus = minus - 360
+                }
+                // Find what is the shortest path to the new angle (+ or -)
+                if (plus < minus) {
+                    mAngle += Math.min(MAX_ANGLE_CHANGE_IN_FRAME, plus / FOLLOW_SCREEN_ROTATION_FACTOR)
+                } else {
+                    mAngle -= Math.min(MAX_ANGLE_CHANGE_IN_FRAME, minus / FOLLOW_SCREEN_ROTATION_FACTOR)
+                }
+
+                phoneAngle = mAngle
+
+                if (phoneAngle > 360) {
+                    phoneAngle = phoneAngle - 360
+                }
+
+                if (phoneAngle < 0) {
+                    phoneAngle = 360 + phoneAngle
+                }
+
+                waterRotation = 90f - phoneAngle.toFloat() - rotation.toFloat()
+
+                refreshOrientation()
+            }
+        }
+
+        private fun startListeners() {
+            if (sensorHelper == null) {
+                sensorHelper = SensorHelper(applicationContext)
+            }
+
+            if (authHelper == null) {
+                authHelper = AuthHelper()
+                authHelper!!.buildFitnessClient(applicationContext, this, this)
+                stepsHelper = StepsHelper(authHelper!!.getClient(), this)
+            }
+
+            sensorHelper!!.start()
+            sensorHelper!!.setListener(this)
+
+            authHelper!!.start()
+        }
+
+        private fun stopListeners() {
+            if (sensorHelper != null)
+                sensorHelper!!.stop()
+            if (authHelper != null)
+                authHelper!!.stop()
+        }
+    }
+
+    companion object {
+
+        internal val STEPS_CHECK_INTERVAL = TimeUnit.MINUTES.toMillis(1)
+        private val FOLLOW_SCREEN_ROTATION_FACTOR = 40 // 1 means follow immediately, bigger number means slowly follow the screen rotation
+        private val MAX_ANGLE_CHANGE_IN_FRAME = 1.5
+        private val TIDE_LEVEL = "tide_level"
+        private val STEPS_GOAL = "steps_goal"
+        private val STEPS_GOAL_DEFAULT = "7500"
+        private val LOW_LEVEL_DEFAULT = "0"
+        private val TIDE_LEVEL_DEFAULT = "3"
+        private val LOW_LEVEL = "low_level"
+    }
+}
