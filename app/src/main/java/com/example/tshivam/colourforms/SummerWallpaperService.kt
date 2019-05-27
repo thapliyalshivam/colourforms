@@ -76,7 +76,7 @@ class SummerWallpaperService : WallpaperService(){
 
         override fun onVisibilityChanged(visible: Boolean) {
             this.visible = visible
-
+            Log.d("val","visibility has changed")
             if (visible) {
                 drawFrame()
             }
