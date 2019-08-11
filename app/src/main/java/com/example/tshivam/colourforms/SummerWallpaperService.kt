@@ -85,6 +85,7 @@ class SummerWallpaperService : WallpaperService(){
 
         private fun drawimg(canvas: Canvas){
             canvas.drawLine(0f,0f,300f,300f,paint)
+            canvas.drawCircle(10.0f,10.0f,40.0f,paint)
 
         }
         private fun drawFrame() {
