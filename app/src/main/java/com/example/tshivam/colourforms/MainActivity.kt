@@ -16,22 +16,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
-        var m:LOPA = LOPA()
-        m.start()
-
-
-        fun brexit(){
-
-            m.ex?.post({  for (i in 1..10){
-                Log.d("val",i.toString()+"mos")
-                SystemClock.sleep(500)
-            }
-
-                brexit()
-            })
-
-
-        }
 
         stall.setOnClickListener {
 

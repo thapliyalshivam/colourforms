@@ -9,6 +9,8 @@ import android.service.wallpaper.WallpaperService
 import android.service.wallpaper.WallpaperService.Engine
 import android.util.Log
 import android.view.SurfaceHolder
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import java.io.FileDescriptor
 import java.io.PrintWriter
 
@@ -45,6 +47,9 @@ class SummerWallpaperService : WallpaperService(){
                 Log.d("val","initiated frame")
                 draw()
             }
+
+
+
         }
 
         private fun draw() {
@@ -70,7 +75,7 @@ class SummerWallpaperService : WallpaperService(){
 
                 }
             }
-                drawFrame()
+//                drawFrame()
         }
 
 
@@ -78,7 +83,13 @@ class SummerWallpaperService : WallpaperService(){
             this.visible = visible
             Log.d("val","visibility has changed")
             if (visible) {
-                drawFrame()
+                GlobalScope.launch {
+
+                    while (visible){
+                        draw()
+                    }
+
+                }
             }
         }
 
@@ -88,11 +99,11 @@ class SummerWallpaperService : WallpaperService(){
             canvas.drawCircle(10.0f,10.0f,40.0f,paint)
 
         }
-        private fun drawFrame() {
-            if(this.visible) {
-                handler.post(this.th)
-            }
-        }
+//        private fun drawFrame() {
+//            if(this.visible) {
+//                handler.post(this.th)
+//            }
+//        }
 
         override fun onCreate(surfaceHolder: SurfaceHolder?) {
             Holder = surfaceHolder
