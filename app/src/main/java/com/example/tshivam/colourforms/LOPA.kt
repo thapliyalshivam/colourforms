@@ -1,8 +1,6 @@
 package com.example.tshivam.colourforms
 
-import android.os.HandlerThread
-import android.os.Looper
-import android.os.SystemClock
+import android.os.*
 import android.util.Log
 import java.util.concurrent.ExecutorService
 import java.util.logging.Handler
@@ -22,3 +20,5 @@ class LOPA : Thread() {
 
     }
 }
+
+

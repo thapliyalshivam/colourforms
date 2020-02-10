@@ -4,7 +4,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
+import android.os.Process.THREAD_PRIORITY_DISPLAY
 import android.service.wallpaper.WallpaperService
 import android.service.wallpaper.WallpaperService.Engine
 import android.util.Log
@@ -28,10 +30,12 @@ class SummerWallpaperService : WallpaperService(){
         internal var Holder: SurfaceHolder? = null
         private var visible: Boolean = false
         private val th:Runnable
+        var workerthread = HandlerThread("OrderHandlerThread")
+
         private val handler: Handler
         var paint:Paint = Paint()
 
-
+         var pos:Int = 1;
 
         init {
             paint.setColor(Color.parseColor("#FFFFFF"))
@@ -39,16 +43,16 @@ class SummerWallpaperService : WallpaperService(){
             paint.setStyle(Paint.Style.STROKE)
             paint.setAntiAlias(true)
             paint.setDither(true)
-            handler = Handler(Looper.myLooper())
+            workerthread.start()
+            handler = Handler(workerthread.looper)
             this.th = Runnable {
-
                 Log.d("val","initiated frame")
                 draw()
             }
         }
 
         private fun draw() {
-
+            pos += if( pos>200) -199 else 1;
 
             val holder = surfaceHolder
             var canvas: Canvas? = null
@@ -84,7 +88,7 @@ class SummerWallpaperService : WallpaperService(){
 
 
         private fun drawimg(canvas: Canvas){
-            canvas.drawLine(0f,0f,300f,300f,paint)
+            canvas.drawLine(0f,0f,this.pos.toFloat(),300f,paint)
             canvas.drawCircle(10.0f,10.0f,40.0f,paint)
 
         }
