@@ -32,6 +32,7 @@ class SummerWallpaperService : WallpaperService(){
         private val th:Runnable
         private val handler: Handler
         var paint:Paint = Paint()
+        var pos : Int = 1
 
 
 
@@ -95,7 +96,8 @@ class SummerWallpaperService : WallpaperService(){
 
 
         private fun drawimg(canvas: Canvas){
-            canvas.drawLine(0f,0f,300f,300f,paint)
+            pos += if (pos>400) -399 else 1
+            canvas.drawLine(0f,0f,pos.toFloat(),300f,paint)
             canvas.drawCircle(10.0f,10.0f,40.0f,paint)
 
         }
