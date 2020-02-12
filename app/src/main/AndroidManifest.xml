@@ -5,6 +5,8 @@
         android:name="android.software.live_wallpaper"
         android:required="true">
     </uses-feature>
+    <uses-feature android:name="android.hardware.sensor.accelerometer"
+        android:required="true" />
 
     <application
         android:allowBackup="true"

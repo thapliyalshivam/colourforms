@@ -6,13 +6,10 @@ import android.graphics.Paint
 import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
-import android.service.wallpaper.WallpaperService.Engine
 import android.util.Log
 import android.view.SurfaceHolder
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import java.io.FileDescriptor
-import java.io.PrintWriter
 
 class SummerWallpaperService : WallpaperService(){
     override fun onCreateEngine(): WallpaperService.Engine {
@@ -33,10 +30,13 @@ class SummerWallpaperService : WallpaperService(){
         private val handler: Handler
         var paint:Paint = Paint()
         var pos : Int = 1
+        private lateinit var sense:SensorApi
 
 
 
         init {
+
+            sense = SensorApi(this@SummerWallpaperService)
             paint.setColor(Color.parseColor("#FFFFFF"))
             paint.setStrokeWidth(30F)
             paint.setStyle(Paint.Style.STROKE)
