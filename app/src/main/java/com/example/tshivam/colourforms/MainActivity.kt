@@ -2,12 +2,11 @@ package com.example.tshivam.colourforms
 
 import android.app.WallpaperManager
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
-import android.os.SystemClock
 import android.util.Log
+import com.example.tshivam.colourforms.service.SummerWallpaperService
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {

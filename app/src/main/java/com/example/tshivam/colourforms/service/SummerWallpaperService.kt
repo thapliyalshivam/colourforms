@@ -1,4 +1,4 @@
-package com.example.tshivam.colourforms
+package com.example.tshivam.colourforms.service
 
 import android.graphics.Canvas
 import android.graphics.Color
@@ -8,6 +8,7 @@ import android.os.Looper
 import android.service.wallpaper.WallpaperService
 import android.util.Log
 import android.view.SurfaceHolder
+import com.example.tshivam.colourforms.sensor.SensorApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
@@ -30,7 +31,7 @@ class SummerWallpaperService : WallpaperService(){
         private val handler: Handler
         var paint:Paint = Paint()
         var pos : Int = 1
-        private lateinit var sense:SensorApi
+        private lateinit var sense: SensorApi
 
 
 

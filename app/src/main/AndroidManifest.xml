@@ -22,7 +22,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service android:name=".SummerWallpaperService"
+        <service android:name=".service.SummerWallpaperService"
 
             android:enabled="true"
             android:label="@string/app_name"

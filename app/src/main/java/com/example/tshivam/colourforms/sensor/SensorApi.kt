@@ -1,4 +1,4 @@
-package com.example.tshivam.colourforms
+package com.example.tshivam.colourforms.sensor
 
 import android.content.Context
 import android.content.Context.SENSOR_SERVICE
