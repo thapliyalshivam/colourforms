@@ -84,6 +84,9 @@ class SummerWallpaperService : WallpaperService(){
             this.visible = visible
             Log.d("val","visibility has changed")
             if (visible) {
+
+                sense.reregister()
+
                 GlobalScope.launch {
 
                     while (visible){
@@ -92,13 +95,19 @@ class SummerWallpaperService : WallpaperService(){
 
                 }
             }
+            else
+            {
+                sense.deregister()
+
+            }
         }
 
 
         private fun drawimg(canvas: Canvas){
+            canvas.drawRect(0f,0f,canvas.width.toFloat(),canvas.height.toFloat(),paint)
             pos += if (pos>400) -399 else 1
             canvas.drawLine(0f,0f,pos.toFloat(),300f,paint)
-            canvas.drawCircle(10.0f,10.0f,40.0f,paint)
+            canvas.drawCircle(10.0f,sense.lux*100.0f,40.0f,paint)
 
         }
 //        private fun drawFrame() {

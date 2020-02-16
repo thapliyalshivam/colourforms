@@ -14,6 +14,7 @@ class SensorApi : SensorEventListener {
     private lateinit var sensorManager: SensorManager
     private lateinit var con: Context
     private var mLight: Sensor? = null
+    var lux: Float = 0.0f
 
 
     constructor( con : Context){
@@ -30,10 +31,20 @@ class SensorApi : SensorEventListener {
         // Do something here if sensor accuracy changes.
     }
 
+
+    public fun deregister(){
+        sensorManager.unregisterListener(this)
+    }
+
+    public  fun reregister(){
+        sensorManager.registerListener(this,mLight,
+                SensorManager.SENSOR_DELAY_GAME)
+    }
+
     override fun onSensorChanged(event: SensorEvent) {
         // The light sensor returns a single value.
         // Many sensors return 3 values, one for each axis.
-        val lux = event.values[0]
+        lux = event.values[0]
 
 
         val alpha: Float = 0.8f
