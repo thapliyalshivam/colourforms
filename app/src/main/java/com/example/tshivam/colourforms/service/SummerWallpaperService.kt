@@ -30,6 +30,7 @@ class SummerWallpaperService : WallpaperService(){
         private val th:Runnable
         private val handler: Handler
         var paint:Paint = Paint()
+
         var pos : Int = 1
         private lateinit var sense: SensorApi
 
@@ -38,7 +39,7 @@ class SummerWallpaperService : WallpaperService(){
         init {
 
             sense = SensorApi(this@SummerWallpaperService)
-            paint.setColor(Color.parseColor("#FFFFFF"))
+            paint.setColor(Color.parseColor("#0000FF"))
             paint.setStrokeWidth(30F)
             paint.setStyle(Paint.Style.STROKE)
             paint.setAntiAlias(true)
