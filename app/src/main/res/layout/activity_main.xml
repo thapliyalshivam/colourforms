@@ -6,26 +6,39 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/sam"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="236dp"
-        android:layout_marginTop="8dp"
-        android:text="Hello World!"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintHorizontal_bias="0.454"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
     <Button
         android:id="@+id/stall"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="154dp"
+        android:layout_marginBottom="44dp"
         android:text="Button"
+        app:layout_constraintBottom_toBottomOf="parent"
+        tools:layout_editor_absoluteX="162dp" />
+
+    <TextView
+        android:id="@+id/sam"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="236dp"
+        android:fontFamily="sans-serif-light"
+        android:text="Hello World!"
+        android:textSize="36sp"
+        android:typeface="sans"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.154" />
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/RV"
+        android:layout_width="360dp"
+        android:layout_height="416dp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toTopOf="@+id/stall"
         app:layout_constraintTop_toBottomOf="@+id/sam"
-        tools:layout_editor_absoluteX="128dp" />
+        app:layout_constraintVertical_bias="0.494"
+        tools:layout_editor_absoluteX="26dp" />
 
 </android.support.constraint.ConstraintLayout>
