@@ -14,7 +14,7 @@ class SensorApi : SensorEventListener {
     private lateinit var sensorManager: SensorManager
     private lateinit var con: Context
     private var mLight: Sensor? = null
-    var lux: Float = 0.0f
+    var lux: Float = 0.2f
 
 
     constructor( con : Context){
@@ -50,7 +50,7 @@ class SensorApi : SensorEventListener {
         val alpha: Float = 0.8f
 
 
-        Log.d("vals", event.values[0].toString())
+        Log.d("valssss", event.values[0].toString())
 
         // Isolate the force of gravity with the low-pass filter.
 //        gravity[0] = alpha * gravity[0] + (1 - alpha) * event.values[0]
